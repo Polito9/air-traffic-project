@@ -56,7 +56,49 @@ If successful, you will see `SUCCESS` messages for both MinIO and MongoDB, and t
 
 ---
 
-## 5. Executing Spark Queries
+## 5. Project Workflow & Running Setup / Data Ingestion
+
+### End-to-End Pipeline Workflow
+1. **Phase 1 — Local Infrastructure Setup:** Initialize MinIO buckets (`airtraffic-raw`, `airtraffic-processed`) and MongoDB collections (`tma_boundaries`, `flight_trajectories`, `holding_events`) with `2dsphere` spatial indexing.
+2. **Phase 2 — Data Ingestion (Batch & Live):**
+   * Load European Terminal Maneuvering Area (TMA) GeoJSON polygons into MongoDB.
+   * Fetch/generate 2019, 2020, and 2023 flight lists and state-vector trajectories as Parquet files (saved locally in `data/parquet/` and uploaded to MinIO `airtraffic-raw`).
+   * Stream live European state vectors from the OpenSky REST API into Apache Kafka (`opensky-live-states` topic) every 15 seconds.
+3. **Phase 3 — Data Cleaning & Flight Grouping:** Filter noisy pings and sessionize aircraft state vectors into continuous GeoJSON `LineString` trajectories using PySpark.
+4. **Phase 4 — Spatial Analytics:** Detect holding patterns (cumulative turns > 360°), diversions, and TMA congestion (`$geoIntersects`).
+5. **Phase 5 — Visualization:** Render trajectories, TMA polygons, holding events, and multi-year trends in Streamlit + Kepler.gl.
+
+### Running Phase 1: Infrastructure Initialization
+With the Docker containers running and your virtual environment activated, initialize the buckets, collections, and geospatial index:
+```bash
+python src/setup_infra.py
+```
+
+### Running Phase 2: Data Ingestion
+1. **Load European TMA Boundaries into MongoDB:**
+   ```bash
+   python src/ingest_tma.py
+   ```
+   *(Optional: pass a custom `.geojson` file path as an argument: `python src/ingest_tma.py path/to/custom.geojson`)*
+
+2. **Ingest Historical Parquet Datasets (2019, 2020, 2023) into MinIO:**
+   ```bash
+   python src/ingest_historical.py
+   ```
+   This saves the `flight_lists` and `state_vectors` Parquet files locally under `data/parquet/` and uploads them to `s3://airtraffic-raw/`.
+
+3. **Start the Live OpenSky -> Kafka Stream Producer:**
+   ```bash
+   # Run continuously (polls OpenSky every 15 seconds)
+   python src/stream_opensky_kafka.py
+
+   # Or run a single test iteration
+   python src/stream_opensky_kafka.py --iterations 1
+   ```
+
+---
+
+## 6. Executing Spark Queries
 
 ### When to use Spark
 Use PySpark for the heavy, distributed data processing tasks outlined in the project phases. This includes:

@@ -1,3 +1,6 @@
 minio==7.2.20
 pymongo==4.19.0
 pyspark==3.5.0
+requests==2.34.2
+pyarrow==26.0.0
+kafka-python-ng==2.2.3

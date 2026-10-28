@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Local data directory (Parquet & GeoJSON files)
+data/
