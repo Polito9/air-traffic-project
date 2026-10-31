@@ -1,0 +1,113 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage{titlesec}
+\usepackage{enumitem}
+
+\titleformat{\section}{\normalsize\bfseries}{\thesection.}{0.5em}{}
+\titlespacing*{\section}{0pt}{1.0ex}{0.5ex}
+\setlist{itemsep=1pt,topsep=2pt,leftmargin=1.2em}
+\setlength{\parskip}{3pt}
+
+\title{\vspace{-1.5cm}\large\textbf{Reading Assignment: Tracking Aviation's Footprint from the Sky}\\[2pt]
+\normalsize Critical review of \emph{``Global Civil Aviation Emissions Estimates for 2017--2020 Using ADS-B Data''}\\
+(Quadros, Snellen, Sun \& Dedoussi, \emph{Journal of Aircraft}, 2022)}
+\author{Pedro Gonz\'alez Nu\~nez \and Speaker B \and Speaker C}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-1.2cm}
+
+\section{Problem}
+Aviation is responsible for roughly 2--3\% of global anthropogenic CO$_2$ emissions, and its total
+climate effect is larger once non-CO$_2$ effects such as NO$_x$ and contrails are included~\cite{lee2021}.
+Despite this, our knowledge of \emph{where} and \emph{when} aircraft emit is surprisingly limited.
+Official figures (ICAO, IEA) are mostly \emph{top-down}: they divide jet-fuel sales between countries,
+come out with a delay of a year or more, and say nothing about the altitude or location of emissions,
+which atmospheric models need. Earlier \emph{bottom-up} inventories, built from flight schedules or
+radar data, are either proprietary, regionally limited, or not updated every year. This became a clear
+problem in 2020: when COVID-19 grounded much of the world's fleet, there was no timely, open and
+spatially resolved estimate of how much aviation emissions actually fell. The question the authors ask
+is whether the huge volume of aircraft position data now broadcast via ADS-B (Automatic Dependent
+Surveillance--Broadcast) can be turned into a reliable, up-to-date global emissions inventory~\cite{quadros2022}.
+
+\section{Approach}
+The authors build a bottom-up pipeline that turns raw flight observations into gridded, speciated emissions:
+\begin{itemize}
+  \item \textbf{Activity data.} Flights observed by crowdsourced networks of ground ADS-B receivers are
+  aggregated into flight lists of (aircraft type, origin, destination, count) for 2017--2020.
+  \item \textbf{Trajectory model.} Each origin--destination pair is flown along the great circle,
+  extended by a constant lateral-inefficiency term (40.5\,NM + 3.87\% of the distance), with cruise
+  levels set from observed data and monthly-averaged winds.
+  \item \textbf{Fuel burn.} Climb, cruise and descent are simulated with EUROCONTROL's BADA~3.15
+  aircraft performance model; the landing--takeoff cycle uses a time-in-mode approach.
+  \item \textbf{Emissions.} CO$_2$, H$_2$O and SO$_x$ scale with fuel; NO$_x$, CO and HC use ICAO Engine
+  Emissions Databank indices corrected for altitude (Boeing Fuel Flow Method~2); non-volatile particulate
+  matter (nvPM) is estimated from engine smoke numbers.
+  \item \textbf{Openness.} The model is released as open-source software (openAVEM) and the gridded
+  monthly results as a CC~BY~4.0 dataset.
+\end{itemize}
+\textbf{Key results.} For 2019 the model estimates about 297\,Tg of fuel, 937\,Tg of CO$_2$ and 4.62\,Tg of
+NO$_x$. COVID-19 cut 2020 fuel burn by about 48\% relative to expected levels, avoiding roughly 463\,Tg of
+CO$_2$ and 2.29\,Tg of NO$_x$. The authors also track changes in fleet-average emission indices over time
+and conclude that ADS-B is a viable source for \emph{timely and transparent} global emissions monitoring.
+
+\section{Critical Reflection}
+\textbf{Where we agree.} The central idea is convincing and, in our view, important. The paper shows that a
+data stream originally built for air-traffic safety can be reused as an environmental sensor. Producing a
+global inventory within months instead of years, with full 3-D resolution, is a real step forward: it made
+it possible to quantify the COVID-19 ``natural experiment'' almost in real time. Its estimates also hold
+up well against independent work: the later GAIA inventory, which uses full satellite and terrestrial ADS-B
+trajectories, finds 2019 fuel burn only 4.7\% lower and an almost identical 2020 drop
+($-48.2\%$ vs.\ $-47.1\%$)~\cite{teoh2024}. Releasing the code and gridded data is good scientific practice
+and makes the work useful to climate modellers.
+
+\textbf{Where we are more critical.}
+\begin{enumerate}
+  \item \emph{``Transparent'' is only partly true.} The pipeline depends on BADA~3, which must be licensed from
+  EUROCONTROL, and on flight lists derived from a commercial tracking platform~\cite{teoh2024}. An outside
+  group cannot fully reproduce the inventory from public inputs. A truly open version would need open
+  performance models (e.g.\ OpenAP) and open data (e.g.\ the OpenSky Network~\cite{schafer2014}).
+  \item \emph{Coverage bias.} Ground receivers are dense in Europe and North America but sparse over oceans,
+  Africa and parts of Asia. Missing flights simply do not appear, which helps explain why the result (297\,Tg)
+  stays below the IEA's top-down 320\,Tg~\cite{teoh2024}. This bias is not neutral: it under-represents
+  exactly the regions where air traffic is growing fastest.
+  \item \emph{The data is richer than the model.} ADS-B provides real trajectories, yet the method reduces
+  them to origin--destination counts and re-flies them as idealised great circles with monthly winds.
+  This throws away actual routing, holding patterns, airspace closures and conflict-zone detours;
+  GAIA shows that a fixed 4--6\% inefficiency underestimates distance flown in regions like Europe~\cite{teoh2024}.
+  \item \emph{Emissions are not climate impact.} The paper reports emitted mass, but contrail cirrus may cause
+  a larger warming effect than aviation's CO$_2$ itself~\cite{lee2021}. Location-aware ADS-B data is exactly what is
+  needed to assess contrails, so stopping at emissions leaves the most policy-relevant question open.
+  nvPM, which drives contrail formation, is also likely underestimated~\cite{teoh2024}.
+\end{enumerate}
+
+\textbf{Overall position.} We agree with the paper's main conclusion: ADS-B data \emph{can} support timely,
+global, spatially resolved emissions monitoring, and the COVID-19 results are robust. We disagree with how
+strongly it presents the approach as transparent, and we think its simplified trajectories under-use the very
+data that makes it novel. Our own project, which ingests OpenSky state vectors into a Spark/MongoDB pipeline
+to detect holding patterns and congestion, illustrates the next step: using real trajectories, not idealised
+ones, to attribute emissions to specific inefficiencies that operational changes could actually remove.
+
+\vspace{-0.3cm}
+{\small
+\begin{thebibliography}{9}\setlength{\itemsep}{0pt}
+\bibitem{quadros2022} F.~D.~A.~Quadros, M.~Snellen, J.~Sun, I.~C.~Dedoussi, ``Global civil aviation emissions
+estimates for 2017--2020 using ADS-B data,'' \emph{Journal of Aircraft}, 59(6):1394--1405, 2022.
+doi:10.2514/1.C036763.
+\bibitem{teoh2024} R.~Teoh, Z.~Engberg, M.~Shapiro, L.~Dray, M.~E.~J.~Stettler, ``The high-resolution Global
+Aviation emissions Inventory based on ADS-B (GAIA) for 2019--2021,'' \emph{Atmos.\ Chem.\ Phys.}, 24:725--744, 2024.
+\bibitem{lee2021} D.~S.~Lee et al., ``The contribution of global aviation to anthropogenic climate forcing for
+2000 to 2018,'' \emph{Atmospheric Environment}, 244:117834, 2021.
+\bibitem{schafer2014} M.~Sch\"afer, M.~Strohmeier, V.~Lenders, I.~Martinovic, M.~Wilhelm, ``Bringing up OpenSky:
+A large-scale ADS-B sensor network for research,'' \emph{Proc.\ IPSN}, 2014.
+\end{thebibliography}
+}
+
+\end{document}
