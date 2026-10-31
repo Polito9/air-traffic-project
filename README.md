@@ -11,7 +11,7 @@ This repository contains the infrastructure and data processing pipelines for an
 ├── docker-compose.yaml        # MinIO, Kafka, Zookeeper, Spark (master + worker), MongoDB
 ├── data/                      # generated locally, NOT committed
 │   ├── parquet/               # simulated 2019/2020/2023 Parquet files (ingest_historical.py)
-│   ├── historical/            # real OpenSky flight lists downloaded from Zenodo (section 12)
+│   ├── historical/            # real OpenSky flight lists downloaded from Zenodo (section 11)
 │   └── european_tmas_simplified.geojson   # 6 simplified TMA polygons (load_tma_polygons.py)
 ├── src/
 │   ├── setup_infra.py                 # Phase 1 – create MinIO buckets, MongoDB collections and 2dsphere index
@@ -33,7 +33,7 @@ This repository contains the infrastructure and data processing pipelines for an
 │   ├── report_stats.py                # prints every figure quoted in the final report
 │   └── dashboard.py                   # Phase 5 – Streamlit + Kepler.gl dashboard (runs locally, not in Docker)
 └── docs/
-    └── final_report.md        # final 2-page report (what we did, dataset, methodology, results, how to run)
+    └── final_report.md        # final 2-page report (objective, dataset, methodology, results, deviations)
 ```
 
 MinIO buckets: `airtraffic-raw` (raw and landed data) and `airtraffic-processed` (cleaned points).
