@@ -2,6 +2,42 @@
 
 This repository contains the infrastructure and data processing pipelines for analyzing European ADS-B air traffic data. The project utilizes a containerized architecture to ensure environment consistency.
 
+
+## Project Structure
+
+```
+├── README.md                  # how to run the project (this file)
+├── requirements.txt           # Python dependencies of the ingestion/test scripts
+├── docker-compose.yaml        # MinIO, Kafka, Zookeeper, Spark (master + worker), MongoDB
+├── data/                      # generated locally, NOT committed
+│   ├── parquet/               # simulated 2019/2020/2023 Parquet files (ingest_historical.py)
+│   └── european_tmas_simplified.geojson   # 6 simplified TMA polygons (load_tma_polygons.py)
+├── src/
+│   ├── setup_infra.py                 # Phase 1 – create MinIO buckets, MongoDB collections and 2dsphere index
+│   ├── test_storage.py                # Phase 1 – check MinIO and MongoDB connections
+│   ├── test_spark.py                  # Phase 1 – check Spark inside the container
+│   ├── ingest_tma.py                  # Phase 2 – load TMA polygons from a GeoJSON file into MongoDB
+│   ├── load_tma_polygons.py           # Phase 2 – fallback: generate and load 6 simplified TMA polygons
+│   ├── ingest_historical.py           # Phase 2 – historical files (OpenSky if available, otherwise simulated)
+│   ├── stream_opensky_kafka.py        # Phase 2 – live OpenSky -> Kafka producer (basic auth)
+│   ├── stream_opensky_kafka_oauth.py  # Phase 2 – live OpenSky -> Kafka producer (OAuth2, gzip, 429 handling)
+│   ├── phase3_kafka_to_minio.py       # Phase 3a – Spark: Kafka topic -> normalized Parquet in MinIO
+│   ├── phase3_clean_sessionize.py     # Phase 3b – Spark: cleaning, sessionization, GeoJSON trajectories -> MongoDB
+│   ├── check_phase3.py                # Phase 3 – print trajectory counts from MongoDB
+│   ├── phase4_holdings.py             # Phase 4a – Spark: holding pattern detection -> holding_events
+│   ├── phase4_congestion.py           # Phase 4b – MongoDB $geoIntersects congestion per TMA -> tma_congestion
+│   ├── phase4_hourly.py               # Phase 4c – traffic and holdings by time of day -> hourly_traffic
+│   ├── report_stats.py                # prints every figure quoted in the final report
+│   └── dashboard.py                   # Phase 5 – Streamlit + Kepler.gl dashboard (runs locally, not in Docker)
+└── docs/
+    └── final_report.md        # final 2-page report (what we did, dataset, methodology, results, how to run)
+```
+
+MinIO buckets: `airtraffic-raw` (raw and landed data) and `airtraffic-processed` (cleaned points).
+MongoDB database `airtraffic_db`: `tma_boundaries`, `flight_trajectories`, `holding_events`, `tma_congestion`, `hourly_traffic`.
+
+---
+
 ## 1. Prerequisites
 *   **Docker Desktop**: Must be installed and running.
 *   **Python 3.10+**: For local testing and script development.
@@ -81,6 +117,11 @@ python src/setup_infra.py
    ```
    *(Optional: pass a custom `.geojson` file path as an argument: `python src/ingest_tma.py path/to/custom.geojson`)*
 
+   > [!NOTE]
+   > `data/european_tmas.geojson` is not in the repository. If you do not have it, run
+   > `python src/load_tma_polygons.py` instead: it loads 6 simplified TMA areas
+   > (60 km circles around London, Paris, Frankfurt, Amsterdam, Madrid and Munich).
+
 2. **Ingest Historical Parquet Datasets (2019, 2020, 2023) into MinIO:**
    ```bash
    python src/ingest_historical.py
@@ -117,3 +158,99 @@ To submit a Spark job, use the following Docker command:
 ```bash
 docker exec -it air-traffic-project-spark-master-1 spark-submit /opt/bitnami/spark/src/<script_name>.py
 ```
+
+---
+
+## 7. Running Phase 3: Data Cleaning & Flight Grouping
+
+Phase 3 runs inside the Spark container. We use `docker compose exec spark-master`, which works whatever the project folder is called. The first run of each job downloads its Spark packages (a few minutes). Use `--driver-memory 3g` when the live capture is large (millions of rows).
+
+**7.1 Land the live stream (Kafka -> MinIO).** Reads the whole `opensky-live-states` topic, turns each OpenSky payload into one row per aircraft state, removes repeated states and writes Parquet to `s3://airtraffic-raw/state_vectors/live/` (re-running overwrites it):
+```bash
+docker compose exec spark-master spark-submit --driver-memory 3g --conf spark.jars.ivy=/tmp/.ivy --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 /opt/bitnami/spark/src/phase3_kafka_to_minio.py
+```
+
+**7.2 Clean, sessionize and store trajectories.** Drops rows with missing coordinates or speed above Mach 1, starts a new flight session after a gap of more than 30 minutes per aircraft, and saves one GeoJSON `LineString` per session in MongoDB `airtraffic_db.flight_trajectories` (live data are labelled `dataset=live`, the simulated ones `synthetic_<year>`):
+```bash
+docker compose exec spark-master spark-submit --driver-memory 3g --conf spark.jars.ivy=/tmp/.ivy --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.mongodb.spark:mongo-spark-connector_2.12:10.3.0 /opt/bitnami/spark/src/phase3_clean_sessionize.py
+```
+Check the result with `python src/check_phase3.py`.
+
+> [!IMPORTANT]
+> Before re-running 7.1/7.2 on a **new live capture**, delete the old live results so trajectories are not duplicated:
+> ```bash
+> docker compose exec mongodb mongosh airtraffic_db --eval "db.flight_trajectories.deleteMany({dataset:'live'}); db.holding_events.deleteMany({})"
+> ```
+
+---
+
+## 8. Running Phase 4: Analytics
+
+1. **Holding patterns (Spark).** A window over each flight session sums the signed heading change over 20 minutes; at least 360 degrees inside a ~50 km box (speed at least 75 m/s, 6 or more pings, 2 or more minutes) is a holding. Results go to `holding_events`:
+   ```bash
+   docker compose exec spark-master spark-submit --driver-memory 3g --conf spark.jars.ivy=/tmp/.ivy --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.mongodb.spark:mongo-spark-connector_2.12:10.3.0 /opt/bitnami/spark/src/phase4_holdings.py
+   ```
+2. **Congestion per TMA (MongoDB `$geoIntersects`).** Counts the trajectories crossing each TMA and the distinct aircraft inside it per 10-minute bucket (`tma_congestion`):
+   ```bash
+   python src/phase4_congestion.py
+   ```
+3. **Traffic by time of day.** Average aircraft seen per 10 minutes and holdings per hour, UTC (`hourly_traffic`):
+   ```bash
+   python src/phase4_hourly.py
+   ```
+4. **Figures used in the report:**
+   ```bash
+   python src/report_stats.py
+   ```
+
+> [!NOTE]
+> Diversions (final position versus planned destination) are **not implemented**: live state vectors contain no planned destination and the simulated flights never divert. See `docs/final_report.md`.
+
+---
+
+## 9. Running Phase 5: Dashboard
+
+The dashboard runs locally in the virtual environment (not in Docker) and reads MongoDB on `localhost:27017`:
+```bash
+pip install streamlit keplergl pydeck pymongo pandas
+python -m streamlit run src/dashboard.py
+```
+Open http://localhost:8501. Tabs: **Map** (trajectories, TMA areas and holdings; pick "Basemap (pydeck)" or "Kepler.gl" in the sidebar), **TMA congestion**, **Traffic trends** (time of day on real data; simulated years in a separate expander) and **Holding events**.
+
+If `streamlit` is blocked by Windows ("Control de aplicaciones"), `python -m streamlit` avoids it.
+
+---
+
+## 10. Capturing live data with an OpenSky API client (OAuth2)
+
+OpenSky no longer accepts user/password. Create an API client in your OpenSky account (https://opensky-network.org/my-opensky/account) and download its `credentials.json` (it holds `clientId` and `clientSecret`). **Never commit it to the repository.** A standard account has 4,000 credits per day; a request over all of Europe costs 4 credits, so about 1,000 requests per day (anonymous access: 400 credits).
+
+Load the credentials into the terminal and start the stream (PowerShell):
+```powershell
+$c = Get-Content "$env:USERPROFILE\Downloads\credentials.json" | ConvertFrom-Json
+$env:OPENSKY_CLIENT_ID = $c.clientId; $env:OPENSKY_CLIENT_SECRET = $c.clientSecret
+python src/stream_opensky_kafka_oauth.py --interval 30 --iterations 500
+```
+macOS / Linux:
+```bash
+export OPENSKY_CLIENT_ID=... OPENSKY_CLIENT_SECRET=...
+python src/stream_opensky_kafka_oauth.py --interval 30 --iterations 500
+```
+The script waits automatically when the quota is exhausted (HTTP 429) and prints `credits left=...` on every request. Options: `--bbox LAMIN LOMIN LAMAX LOMAX`, `--bootstrap-servers`, `--iterations`.
+
+---
+
+## 11. Full run, in order
+
+```text
+1. docker compose up -d
+2. python src/setup_infra.py
+3. python src/ingest_historical.py            # simulated 2019/2020/2023 data
+4. python src/load_tma_polygons.py            # or src/ingest_tma.py with a GeoJSON file
+5. python src/stream_opensky_kafka_oauth.py --interval 30 --iterations 500   # live data (needs credentials)
+6. spark-submit phase3_kafka_to_minio.py, then phase3_clean_sessionize.py     # section 7
+7. spark-submit phase4_holdings.py                                            # section 8
+8. python src/phase4_congestion.py ; python src/phase4_hourly.py ; python src/report_stats.py
+9. python -m streamlit run src/dashboard.py
+```
+Steps 1-4 and 6-9 also work with only the simulated data (without step 5), but then the results only validate the pipeline.
