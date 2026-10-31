@@ -8,17 +8,17 @@
 
 ---
 
-1. Objective and project phases
+## 1. Objective and project phases
 
 We wanted to analyse European air traffic at scale with ADS-B data from the OpenSky Network: detect holding patterns, measure congestion in terminal areas (TMAs), compare traffic across periods, and show the results on a map. We built an end-to-end big data pipeline (Docker Compose: MinIO, Kafka, Spark, MongoDB) and split the work in five phases:
 
-Local infrastructure: containers, MinIO buckets, MongoDB collections with 2dsphere indexes.
-Data ingestion: live OpenSky states into Kafka; historical files (2019, 2020, 2023) as Parquet in MinIO; TMA polygons in MongoDB.
-Cleaning and flight grouping: Spark filters noisy pings and groups them into flight trajectories (GeoJSON LineString).
-Spatial analytics: holding patterns, TMA congestion ($geoIntersects) and traffic by time of day.
-Visualization: Streamlit + Kepler.gl dashboard.
+1. **Local infrastructure:** containers, MinIO buckets, MongoDB collections with `2dsphere` indexes.
+2. **Data ingestion:** live OpenSky states into Kafka; historical files (2019, 2020, 2023) as Parquet in MinIO; TMA polygons in MongoDB.
+3. **Cleaning and flight grouping:** Spark filters noisy pings and groups them into flight trajectories (GeoJSON `LineString`).
+4. **Spatial analytics:** holding patterns, TMA congestion (`$geoIntersects`) and traffic by time of day.
+5. **Visualization:** Streamlit + Kepler.gl dashboard.
 
-The repository layout and run instructions are in README.md.
+The repository layout and run instructions are in `README.md`.
 
 
 ## 2. Dataset
