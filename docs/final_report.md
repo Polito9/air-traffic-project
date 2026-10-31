@@ -79,7 +79,7 @@ London is the busiest TMA, then Paris and Frankfurt; peaks fall between 10:40 an
 | All European airports, 2019 | 435,969 | 483,456 | 517,751 | 562,458 | 606,176 |
 | All European airports, 2020 | 478,691 (+10%) | 328,007 (−32%) | 77,049 (−85%) | 119,146 (−79%) | 177,469 (−71%) |
 
-The COVID-19 collapse starts in March, bottoms out in April (Munich and Madrid −94%) and recovers slowly; February 2020 is higher because of the leap day and a larger receiver network. April 2022: 91,499 arrivals at the hubs (−10% vs 2019), 601,844 Europe-wide (+16%), probably receiver growth, so absolute counts across years are indicative only.
+The COVID-19 collapse starts in March, bottoms out in April (Munich and Madrid −94%) and recovers slowly; February 2020 is higher partly because of the leap day and probably a larger receiver network. April 2022: 91,499 arrivals at the hubs (−10% vs 2019), 601,844 Europe-wide (+16%), probably receiver growth, so absolute counts across years are indicative only.
 
 ## 5. Deviations from the proposal and limitations
 
