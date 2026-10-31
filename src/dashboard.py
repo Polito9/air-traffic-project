@@ -91,6 +91,11 @@ def load_hourly():
     return df
 
 
+def load_airport_daily():
+    df = pd.DataFrame(list(db["airport_daily"].find({})))
+    return df
+
+
 def kepler_html(flights, tmas, holdings):
     from keplergl import KeplerGl
     m = KeplerGl(height=650)
@@ -189,8 +194,25 @@ with tab_trend:
         st.dataframe(hr[["hour", "buckets", "avg_aircraft_10min", "max_aircraft_10min", "holdings"]],
                      hide_index=True)
     st.divider()
+    st.subheader("Real historical comparison: April 2019 vs 2020 vs 2022 (OpenSky flight lists)")
+    ad = load_airport_daily()
+    if ad.empty:
+        st.info("Run `src/upload_flightlists.py` and `src/phase4_flightlists.py` (README, section 11) to see this.")
+    else:
+        st.caption("Flights landing per day. Source: OpenSky flight lists (Zenodo), real data. No 2023 is available in that dataset.")
+        eu = ad[ad["airport"] == "EUROPE"].pivot_table(index="day_of_month", columns="year", values="arrivals", aggfunc="sum")
+        st.markdown("**Daily arrivals at all European airports (ICAO prefix E/L)**")
+        st.line_chart(eu)
+        hubs = ad[ad["airport"] != "EUROPE"].groupby(["airport", "year"])["arrivals"].sum().unstack("year")
+        base = hubs.get(2019)
+        if base is not None and 2020 in hubs.columns:
+            hubs["2020 vs 2019 (%)"] = ((hubs[2020] / base - 1) * 100).round(0)
+        st.markdown("**April arrivals at the six TMA airports**")
+        st.dataframe(hubs)
+
+    st.divider()
     s = load_summary()
-    with st.expander("Simulated years 2019 / 2020 / 2023 (pipeline validation only, not real traffic)"):
+    with st.expander("Simulated trajectories 2019 / 2020 / 2023 (pipeline validation only, not real traffic)"):
         if s.empty:
             st.info("No trajectories found.")
         else:

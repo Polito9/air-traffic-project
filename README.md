@@ -11,6 +11,7 @@ This repository contains the infrastructure and data processing pipelines for an
 ├── docker-compose.yaml        # MinIO, Kafka, Zookeeper, Spark (master + worker), MongoDB
 ├── data/                      # generated locally, NOT committed
 │   ├── parquet/               # simulated 2019/2020/2023 Parquet files (ingest_historical.py)
+│   ├── historical/            # real OpenSky flight lists downloaded from Zenodo (section 12)
 │   └── european_tmas_simplified.geojson   # 6 simplified TMA polygons (load_tma_polygons.py)
 ├── src/
 │   ├── setup_infra.py                 # Phase 1 – create MinIO buckets, MongoDB collections and 2dsphere index
@@ -27,6 +28,8 @@ This repository contains the infrastructure and data processing pipelines for an
 │   ├── phase4_holdings.py             # Phase 4a – Spark: holding pattern detection -> holding_events
 │   ├── phase4_congestion.py           # Phase 4b – MongoDB $geoIntersects congestion per TMA -> tma_congestion
 │   ├── phase4_hourly.py               # Phase 4c – traffic and holdings by time of day -> hourly_traffic
+│   ├── upload_flightlists.py          # Phase 4d – upload the real OpenSky flight lists (Zenodo) to MinIO
+│   ├── phase4_flightlists.py          # Phase 4d – Spark: daily arrivals/departures per airport -> airport_daily
 │   ├── report_stats.py                # prints every figure quoted in the final report
 │   └── dashboard.py                   # Phase 5 – Streamlit + Kepler.gl dashboard (runs locally, not in Docker)
 └── docs/
@@ -34,7 +37,7 @@ This repository contains the infrastructure and data processing pipelines for an
 ```
 
 MinIO buckets: `airtraffic-raw` (raw and landed data) and `airtraffic-processed` (cleaned points).
-MongoDB database `airtraffic_db`: `tma_boundaries`, `flight_trajectories`, `holding_events`, `tma_congestion`, `hourly_traffic`.
+MongoDB database `airtraffic_db`: `tma_boundaries`, `flight_trajectories`, `holding_events`, `tma_congestion`, `hourly_traffic`, `airport_daily`.
 
 ---
 
@@ -240,7 +243,26 @@ The script waits automatically when the quota is exhausted (HTTP 429) and prints
 
 ---
 
-## 11. Full run, in order
+## 11. Real historical comparison (April 2019 / 2020 / 2022)
+
+The OpenSky flight lists are public (Zenodo record 7923702, one `.csv.gz` per month, 2019-2022). They contain origin, destination and times of every flight, but no trajectories.
+
+1. Download the three files into `data/historical/` (do not unzip them):
+   ```powershell
+   New-Item -ItemType Directory -Force data\historical | Out-Null
+   $base = "https://zenodo.org/records/7923702/files"
+   foreach ($f in "flightlist_20190401_20190430.csv.gz","flightlist_20200401_20200430.csv.gz","flightlist_20220401_20220430.csv.gz") {
+     Invoke-WebRequest "$base/$f`?download=1" -OutFile "data\historical\$f"
+   }
+   ```
+2. Upload them to MinIO (venv active, Docker up): `python src/upload_flightlists.py`
+3. Count daily arrivals and departures with Spark (writes `airtraffic_db.airport_daily`):
+   ```bash
+   docker compose exec spark-master spark-submit --driver-memory 3g --conf spark.jars.ivy=/tmp/.ivy --packages org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262,org.mongodb.spark:mongo-spark-connector_2.12:10.3.0 /opt/bitnami/spark/src/phase4_flightlists.py
+   ```
+4. The dashboard (tab "Traffic trends") shows the comparison.
+
+## 12. Full run, in order
 
 ```text
 1. docker compose up -d
@@ -251,6 +273,7 @@ The script waits automatically when the quota is exhausted (HTTP 429) and prints
 6. spark-submit phase3_kafka_to_minio.py, then phase3_clean_sessionize.py     # section 7
 7. spark-submit phase4_holdings.py                                            # section 8
 8. python src/phase4_congestion.py ; python src/phase4_hourly.py ; python src/report_stats.py
-9. python -m streamlit run src/dashboard.py
+9. download flight lists, python src/upload_flightlists.py, spark-submit phase4_flightlists.py   # section 11
+10. python -m streamlit run src/dashboard.py
 ```
-Steps 1-4 and 6-9 also work with only the simulated data (without step 5), but then the results only validate the pipeline.
+Steps 1-4 and 6-10 also work with only the simulated data (without step 5), but then the results only validate the pipeline.
