@@ -243,17 +243,16 @@ The script waits automatically when the quota is exhausted (HTTP 429) and prints
 
 ---
 
-## 11. Real historical comparison (April 2019 / 2020 / 2022)
+## 11. Real historical comparison (COVID-19: Feb-Jun 2019/2020 and April 2022)
 
 The OpenSky flight lists are public (Zenodo record 7923702, one `.csv.gz` per month, 2019-2022). They contain origin, destination and times of every flight, but no trajectories.
 
-1. Download the three files into `data/historical/` (do not unzip them):
+1. Download the eleven files into `data/historical/` (do not unzip them): February to June of 2019 and 2020, and April 2022 (about 1.6 GB):
    ```powershell
    New-Item -ItemType Directory -Force data\historical | Out-Null
    $base = "https://zenodo.org/records/7923702/files"
-   foreach ($f in "flightlist_20190401_20190430.csv.gz","flightlist_20200401_20200430.csv.gz","flightlist_20220401_20220430.csv.gz") {
-     Invoke-WebRequest "$base/$f`?download=1" -OutFile "data\historical\$f"
-   }
+   $files = "flightlist_20190201_20190228","flightlist_20190301_20190331","flightlist_20190401_20190430","flightlist_20190501_20190531","flightlist_20190601_20190630","flightlist_20200201_20200229","flightlist_20200301_20200331","flightlist_20200401_20200430","flightlist_20200501_20200531","flightlist_20200601_20200630","flightlist_20220401_20220430"
+   foreach ($f in $files) { Invoke-WebRequest "$base/$f.csv.gz`?download=1" -OutFile "data\historical\$f.csv.gz" }
    ```
 2. Upload them to MinIO (venv active, Docker up): `python src/upload_flightlists.py`
 3. Count daily arrivals and departures with Spark (writes `airtraffic_db.airport_daily`):

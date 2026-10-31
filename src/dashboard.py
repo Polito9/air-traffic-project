@@ -194,21 +194,30 @@ with tab_trend:
         st.dataframe(hr[["hour", "buckets", "avg_aircraft_10min", "max_aircraft_10min", "holdings"]],
                      hide_index=True)
     st.divider()
-    st.subheader("Real historical comparison: April 2019 vs 2020 vs 2022 (OpenSky flight lists)")
+    st.subheader("Real historical comparison: COVID-19 (OpenSky flight lists)")
     ad = load_airport_daily()
     if ad.empty:
         st.info("Run `src/upload_flightlists.py` and `src/phase4_flightlists.py` (README, section 11) to see this.")
     else:
-        st.caption("Flights landing per day. Source: OpenSky flight lists (Zenodo), real data. No 2023 is available in that dataset.")
-        eu = ad[ad["airport"] == "EUROPE"].pivot_table(index="day_of_month", columns="year", values="arrivals", aggfunc="sum")
-        st.markdown("**Daily arrivals at all European airports (ICAO prefix E/L)**")
-        st.line_chart(eu)
-        hubs = ad[ad["airport"] != "EUROPE"].groupby(["airport", "year"])["arrivals"].sum().unstack("year")
-        base = hubs.get(2019)
-        if base is not None and 2020 in hubs.columns:
-            hubs["2020 vs 2019 (%)"] = ((hubs[2020] / base - 1) * 100).round(0)
-        st.markdown("**April arrivals at the six TMA airports**")
-        st.dataframe(hubs)
+        st.caption("Flights landing per month, real data from the OpenSky flight lists (Zenodo). Only the months we downloaded "
+                   "are shown; there is no 2023 in that dataset.")
+        m = ad.groupby(["airport", "year", "month"])["arrivals"].sum().reset_index()
+        eu = m[m["airport"] == "EUROPE"].pivot_table(index="month", columns="year", values="arrivals", aggfunc="sum")
+        hub = m[m["airport"] != "EUROPE"].groupby(["year", "month"])["arrivals"].sum().unstack("year")
+        a, b = st.columns(2)
+        a.markdown("**Monthly arrivals, all European airports**")
+        a.line_chart(eu)
+        b.markdown("**Monthly arrivals, six TMA airports**")
+        b.line_chart(hub)
+        if 2019 in hub.columns and 2020 in hub.columns:
+            t = pd.DataFrame({"6 TMA airports 2020 vs 2019 (%)": ((hub[2020] / hub[2019] - 1) * 100).round(0)})
+            if 2019 in eu.columns and 2020 in eu.columns:
+                t["Europe 2020 vs 2019 (%)"] = ((eu[2020] / eu[2019] - 1) * 100).round(0)
+            st.markdown("**Change of arrivals, 2020 vs 2019, by month**")
+            st.dataframe(t.dropna(how="all"))
+        hubs = m[m["airport"] != "EUROPE"].pivot_table(index="airport", columns=["year", "month"], values="arrivals", aggfunc="sum")
+        with st.expander("Arrivals per airport and month"):
+            st.dataframe(hubs)
 
     st.divider()
     s = load_summary()

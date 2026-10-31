@@ -34,3 +34,28 @@ for tma in db["tma_boundaries"].find({}, {"geometry": 0}):
     if rows:
         top = max(rows, key=lambda r: r["active_flights"])
         print(f"{tma['_id']} {tma.get('name')}: peak {top['active_flights']} at {utc(top['bucket_start'])} UTC")
+
+print("\n=== HOLDINGS INSIDE A TMA (validation of the detector) ===")
+from math import asin, cos, radians, sin, sqrt
+
+
+def km(lon1, lat1, lon2, lat2):
+    a = sin(radians(lat2 - lat1) / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(radians(lon2 - lon1) / 2) ** 2
+    return 12742 * asin(sqrt(a))
+
+
+tmas = list(db["tma_boundaries"].find({}, {"geometry": 0}))
+inside, per_tma = set(), {}
+for h in hs:
+    lon, lat = h["geometry"]["coordinates"]
+    for t in tmas:
+        c = t["center"]
+        if km(lon, lat, c[0], c[1]) <= t["radius_km"]:
+            inside.add(h["_id"])
+            per_tma.setdefault(t["_id"], []).append(h)
+            break
+print(f"{len(inside)} of {len(hs)} events ({100 * len(inside) / len(hs):.0f}%) are centred inside one of the {len(tmas)} TMA circles")
+for t in tmas:
+    rows = per_tma.get(t["_id"], [])
+    print(f"  {t['_id']} {t.get('name')}: {len(rows)} events, {len({r['icao24'] for r in rows})} aircraft",
+          "; callsigns:", sorted({r.get('callsign') or '?' for r in rows})[:8])
